@@ -254,6 +254,9 @@ async function setupClaimListener() {
   }, 15000); // Poll every 15 seconds
 }
 
+// Add this near the top with other configurations
+let usedFallbackIndices = new Set();
+
 async function generateBountyIdea() {
   try {
     // Get recent bounty titles (last 100)
@@ -277,7 +280,7 @@ async function generateBountyIdea() {
           messages: [
             {
               role: "system",
-              content: `Generate a concise bounty idea that requires photo proof. These bounties are for a community that values top hats, please creatively include a top hat request in each bounty. Format response as JSON with title and description. AVOID generating anything similar to these recent bounties:\n${recentTitles}`,
+              content: `Generate a concise bounty idea that requires photo proof. These bounties are for a community that values top hats, please creatively include a top hat request in each bounty. Format response as JSON with title and description. Example format: {"title": "Top Hat Tea Time", "description": "Share a photo of your afternoon tea while wearing a top hat"}. AVOID generating anything similar to these recent bounties:\n${recentTitles}`,
             },
             {
               role: "user",
@@ -300,11 +303,64 @@ async function generateBountyIdea() {
     return bounty;
   } catch (error) {
     console.error("Error generating bounty:", error);
-    return {
-      title: "Daily Challenge",
-      description:
-        "Take a creative photo of your breakfast and share it with the community.",
-    };
+    const fallbackBounties = [
+      {
+        title: "Top Hat Tea Time",
+        description: "Share a photo of yourself enjoying tea while wearing a distinguished top hat in an unexpected location."
+      },
+      {
+        title: "Formal Pet Portrait",
+        description: "Dress your pet in a top hat and take a Victorian-style portrait photo."
+      },
+      {
+        title: "Top Hat Trick Shot",
+        description: "Capture a photo of yourself successfully landing a small object into a top hat from at least 10 feet away."
+      },
+      {
+        title: "Historical Hat Recreation",
+        description: "Recreate a famous historical photo or painting while wearing a top hat."
+      },
+      {
+        title: "Top Hat Garden Party",
+        description: "Host an impromptu garden party with at least 3 people wearing top hats, even if it's in your living room."
+      },
+      {
+        title: "Breakfast with Class",
+        description: "Take a photo of your morning breakfast setup with a miniature top hat perched on something in the scene."
+      },
+      {
+        title: "Top Hat Transportation",
+        description: "Capture yourself wearing a top hat while using an unusual form of transportation (skateboard, unicycle, etc)."
+      },
+      {
+        title: "Hat Stack Challenge",
+        description: "Successfully balance and photograph at least 3 top hats stacked on your head."
+      },
+      {
+        title: "Top Hat Wildlife",
+        description: "Edit a top hat onto a photo you take of local wildlife (bird, squirrel, etc)."
+      },
+      {
+        title: "Formal Fitness",
+        description: "Share a photo of yourself exercising while wearing a top hat."
+      }
+    ];
+
+    // Get available indices (ones we haven't used yet)
+    const availableIndices = Array.from(Array(fallbackBounties.length).keys())
+      .filter(i => !usedFallbackIndices.has(i));
+
+    // If we've used all bounties, reset the tracking
+    if (availableIndices.length === 0) {
+      usedFallbackIndices.clear();
+      availableIndices.push(...Array(fallbackBounties.length).keys());
+    }
+
+    // Select a random unused index
+    const randomIndex = availableIndices[Math.floor(Math.random() * availableIndices.length)];
+    usedFallbackIndices.add(randomIndex);
+
+    return fallbackBounties[randomIndex];
   }
 }
 
