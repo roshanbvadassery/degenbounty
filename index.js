@@ -165,7 +165,7 @@ async function verifyClaimWithAI(bountyTitle, bountyDescription, claimId) {
     console.log("Bounty Description:", bountyDescription);
     console.log("AI Score:", score);
 
-    const decision = score >= 7;
+    const decision = score >= 9;
     console.log("Final Decision:", decision, `(Score: ${score}/10)`);
 
     return decision;
