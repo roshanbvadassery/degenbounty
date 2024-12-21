@@ -306,49 +306,60 @@ async function generateBountyIdea() {
     const fallbackBounties = [
       {
         title: "Top Hat Tea Time",
-        description: "Share a photo of yourself enjoying tea while wearing a distinguished top hat in an unexpected location."
+        description:
+          "Share a photo of yourself enjoying tea while wearing a distinguished top hat in an unexpected location.",
       },
       {
         title: "Formal Pet Portrait",
-        description: "Dress your pet in a top hat and take a Victorian-style portrait photo."
+        description:
+          "Dress your pet in a top hat and take a Victorian-style portrait photo.",
       },
       {
         title: "Top Hat Trick Shot",
-        description: "Capture a photo of yourself successfully landing a small object into a top hat from at least 10 feet away."
+        description:
+          "Capture a photo of yourself successfully landing a small object into a top hat from at least 10 feet away.",
       },
       {
         title: "Historical Hat Recreation",
-        description: "Recreate a famous historical photo or painting while wearing a top hat."
+        description:
+          "Recreate a famous historical photo or painting while wearing a top hat.",
       },
       {
         title: "Top Hat Garden Party",
-        description: "Host an impromptu garden party with at least 3 people wearing top hats, even if it's in your living room."
+        description:
+          "Host an impromptu garden party with at least 3 people wearing top hats, even if it's in your living room.",
       },
       {
         title: "Breakfast with Class",
-        description: "Take a photo of your morning breakfast setup with a miniature top hat perched on something in the scene."
+        description:
+          "Take a photo of your morning breakfast setup with a miniature top hat perched on something in the scene.",
       },
       {
         title: "Top Hat Transportation",
-        description: "Capture yourself wearing a top hat while using an unusual form of transportation (skateboard, unicycle, etc)."
+        description:
+          "Capture yourself wearing a top hat while using an unusual form of transportation (skateboard, unicycle, etc).",
       },
       {
         title: "Hat Stack Challenge",
-        description: "Successfully balance and photograph at least 3 top hats stacked on your head."
+        description:
+          "Successfully balance and photograph at least 3 top hats stacked on your head.",
       },
       {
         title: "Top Hat Wildlife",
-        description: "Edit a top hat onto a photo you take of local wildlife (bird, squirrel, etc)."
+        description:
+          "Edit a top hat onto a photo you take of local wildlife (bird, squirrel, etc).",
       },
       {
         title: "Formal Fitness",
-        description: "Share a photo of yourself exercising while wearing a top hat."
-      }
+        description:
+          "Share a photo of yourself exercising while wearing a top hat.",
+      },
     ];
 
     // Get available indices (ones we haven't used yet)
-    const availableIndices = Array.from(Array(fallbackBounties.length).keys())
-      .filter(i => !usedFallbackIndices.has(i));
+    const availableIndices = Array.from(
+      Array(fallbackBounties.length).keys()
+    ).filter((i) => !usedFallbackIndices.has(i));
 
     // If we've used all bounties, reset the tracking
     if (availableIndices.length === 0) {
@@ -357,7 +368,8 @@ async function generateBountyIdea() {
     }
 
     // Select a random unused index
-    const randomIndex = availableIndices[Math.floor(Math.random() * availableIndices.length)];
+    const randomIndex =
+      availableIndices[Math.floor(Math.random() * availableIndices.length)];
     usedFallbackIndices.add(randomIndex);
 
     return fallbackBounties[randomIndex];
@@ -566,8 +578,8 @@ app.get("/current-bounty", async (req, res) => {
         day: latestBounty.id, // Using id as day number
         title: latestBounty.title,
         description: latestBounty.description,
-        amount: "0.001 ETH", // Fixed amount per bounty
-        tokenAmount: "1000 $AGENT",
+        amount: "0.001", // Fixed amount per bounty
+        tokenAmount: "1000",
         timeLeft:
           timeLeft > 0
             ? Math.floor(timeLeft / 1000 / 60 / 60) + " hours"
@@ -634,8 +646,8 @@ app.get("/previous-bounties", async (req, res) => {
             title: bounty.title,
             description: bounty.description,
             winner: acceptedClaim ? acceptedClaim.issuer : null,
-            amount: "0.001 ETH",
-            tokenAmount: "1000 $AGENT",
+            amount: "0.001",
+            tokenAmount: "1000",
             created_at: bounty.created_at,
             task: bounty.title,
           };
