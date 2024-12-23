@@ -135,7 +135,7 @@ async function verifyClaimWithAI(bountyTitle, bountyDescription, claimId) {
             {
               role: "system",
               content:
-                "You are verifying if a claim submission matches the bounty requirements. Rate the submission on a scale of 1-10, where 1 means it completely fails to meet the requirements and 10 means it perfectly satisfies them. Return only the numerical score.",
+                "You are verifying if a claim submission matches the bounty requirements. Rate the submission on a scale of 1-10, where 1 means it completely fails to meet the requirements and 10 means it perfectly satisfies them. Give zero if you think its an ai generated image. Return only the numerical score.",
             },
             {
               role: "user",
