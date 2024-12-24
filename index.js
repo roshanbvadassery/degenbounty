@@ -98,14 +98,12 @@ async function initializeContract() {
 // AI verification function
 async function verifyClaimWithAI(bountyTitle, bountyDescription, claimId) {
   try {
-    // Create NFT contract instance
     const nftContract = new ethers.Contract(
       NFT_CONTRACT_ADDRESS,
       ["function tokenURI(uint256 tokenId) view returns (string)"],
       provider
     );
 
-    // Fetch NFT metadata to get the image URL
     const tokenURI = await nftContract.tokenURI(claimId);
     const httpUrl = tokenURI.replace("ipfs://", "https://ipfs.io/ipfs/");
     const metadataResponse = await fetch(httpUrl);
@@ -117,7 +115,16 @@ async function verifyClaimWithAI(bountyTitle, bountyDescription, claimId) {
       return false;
     }
 
-    console.log(imageUrl);
+    // Attempt to get image metadata
+    let imageMetadata = "";
+    try {
+      const imageResponse = await fetch(imageUrl);
+      const contentType = imageResponse.headers.get("content-type");
+      const contentLength = imageResponse.headers.get("content-length");
+      imageMetadata = `Image Type: ${contentType}, Size: ${contentLength} bytes`;
+    } catch (error) {
+      console.log("Could not fetch image metadata:", error);
+    }
 
     const response = await fetch(
       "https://openrouter.ai/api/v1/chat/completions",
@@ -135,14 +142,17 @@ async function verifyClaimWithAI(bountyTitle, bountyDescription, claimId) {
             {
               role: "system",
               content:
-                "You are verifying if a claim submission matches the bounty requirements. Rate the submission on a scale of 1-10, where 1 means it completely fails to meet the requirements and 10 means it perfectly satisfies them. Give zero if you think its an ai generated image. Return only the numerical score.",
+                "You are verifying bounty claim submissions. Your primary tasks are:\n" +
+                "1. Detect if the image appears to be AI-generated (look for telltale signs like unusual artifacts, perfect symmetry, unnatural lighting, or distorted features)\n" +
+                "2. If the image appears to be real, rate how well it matches the bounty requirements on a scale of 1-10\n" +
+                "Return ONLY a number: 0 for AI-generated images, or 1-10 for real images based on how well they match the requirements.",
             },
             {
               role: "user",
               content: [
                 {
                   type: "text",
-                  text: `Bounty Title: ${bountyTitle}\nBounty Description: ${bountyDescription}\nRate how well the image satisfies the bounty requirements on a scale of 1-10:`,
+                  text: `Bounty Title: ${bountyTitle}\nBounty Description: ${bountyDescription}\nImage Metadata: ${imageMetadata}\nRate the submission (0 if AI-generated, 1-10 if real):`,
                 },
                 {
                   type: "image_url",
