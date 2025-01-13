@@ -47,9 +47,19 @@ let db;
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       title TEXT NOT NULL,
       description TEXT NOT NULL,
+      contract_bounty_id TEXT,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )
   `);
+
+  // Add column if it doesn't exist (SQLite doesn't support ADD COLUMN IF NOT EXISTS)
+  try {
+    await db.exec(`ALTER TABLE bounties ADD COLUMN contract_bounty_id TEXT`);
+  } catch (error) {
+    // Column might already exist, that's okay
+    console.log("Column might already exist, continuing...");
+  }
+
 })();
 
 let provider;
@@ -422,6 +432,13 @@ async function createBounty() {
 
     if (bountyCreatedEvent) {
       bountyId = bountyCreatedEvent.args.id.toString();
+
+      // Store in database with contract bounty ID
+      await db.run(
+        "INSERT INTO bounties (title, description, contract_bounty_id) VALUES (?, ?, ?)",
+        [bountyContent.title, bountyContent.description, bountyId]
+      );
+
       console.log(`Created bounty #${bountyId} on Degen`);
       return bountyId;
     }
@@ -551,13 +568,48 @@ app.get("/bounty/:id/claims", async (req, res) => {
   }
 });
 
+// Add this helper function in your Express app
+async function findContractBountyId(title, description) {
+  try {
+    const provider = new ethers.JsonRpcProvider(CHAIN_CONFIG.rpcUrl);
+    const contract = new ethers.Contract(
+      CHAIN_CONFIG.contractAddress,
+      abi,
+      provider
+    );
+
+    // Get total bounties
+    const totalBountiesBigInt = await contract.bountyCounter();
+    const totalBounties = Number(totalBountiesBigInt);
+
+    // Look through recent bounties to find a match
+    for (let i = totalBounties - 1; i >= 0; i--) {
+      try {
+        const bounty = await contract.bounties(i);
+        if (bounty.name === title && bounty.description === description) {
+          return i.toString();
+        }
+      } catch (error) {
+        console.error(`Error checking bounty ${i}:`, error);
+        continue;
+      }
+    }
+    return null;
+  } catch (error) {
+    console.error("Error finding contract bounty ID:", error);
+    return null;
+  }
+}
+
 // Get current active bounty
 app.get("/current-bounty", async (req, res) => {
   try {
     // Get latest bounty from database
     const latestBounty = await db.get(
-      "SELECT * FROM bounties ORDER BY created_at DESC LIMIT 1"
+      "SELECT *, contract_bounty_id as bountyId FROM bounties ORDER BY created_at DESC LIMIT 1"
     );
+
+    console.log("Database bounty:", latestBounty);
 
     if (!latestBounty) {
       return res.status(404).json({
@@ -566,43 +618,67 @@ app.get("/current-bounty", async (req, res) => {
       });
     }
 
+    console.log("Database bounty:", latestBounty);
+
+     // If contract_bounty_id is null, try to find it
+     if (!latestBounty.contract_bounty_id) {
+      const contractId = await findContractBountyId(
+        latestBounty.title,
+        latestBounty.description
+      );
+
+      if (contractId) {
+        // Update the database with the found ID
+        await db.run(
+          "UPDATE bounties SET contract_bounty_id = ? WHERE id = ?",
+          [contractId, latestBounty.id]
+        );
+        latestBounty.bountyId = contractId;
+      }
+    }
+
     // Calculate time remaining
     const endTime = new Date(latestBounty.created_at);
     endTime.setHours(endTime.getHours() + 24);
     const timeLeft = endTime - new Date();
 
+    
+    let submissionsCount = 0;
+    if (latestBounty.bountyId) {
+      try {
+        const provider = new ethers.JsonRpcProvider(CHAIN_CONFIG.rpcUrl);
+        const contract = new ethers.Contract(
+          CHAIN_CONFIG.contractAddress,
+          abi,
+          provider
+        );
+
+        const claims = await contract.getClaimsByBountyId(latestBounty.bountyId);
+        submissionsCount = claims.length;
+      } catch (error) {
+        console.error("Error getting claims:", error);
+      }
+    }
+
     const response = {
       success: true,
       bounty: {
-        id: latestBounty.id,
-        day: latestBounty.id, // Using id as day number
+        id: latestBounty.bountyId || latestBounty.id.toString(),
+        day: latestBounty.id,
         title: latestBounty.title,
         description: latestBounty.description,
-        amount: "0.001", // Fixed amount per bounty
-        tokenAmount: "1000",
-        timeLeft:
-          timeLeft > 0
-            ? Math.floor(timeLeft / 1000 / 60 / 60) + " hours"
-            : "Ended",
-        submissions: 0, // We'll update this with contract data
+        amount: "0.001 DEGEN",
+        tokenAmount: "1000 $MAD",
+        timeLeft: timeLeft > 0
+          ? Math.floor(timeLeft / 1000 / 60 / 60) + " hours"
+          : "Ended",
+        submissions: submissionsCount,
         created_at: latestBounty.created_at,
+        poidhUrl: latestBounty.bountyId 
+          ? `https://poidh.xyz/degen/bounty/${latestBounty.bountyId}`
+          : null
       },
     };
-
-    // Get contract data if available
-    try {
-      const provider = new ethers.JsonRpcProvider(CHAIN_CONFIG.rpcUrl);
-      const contract = new ethers.Contract(
-        CHAIN_CONFIG.contractAddress,
-        abi,
-        provider
-      );
-
-      const claims = await contract.getClaimsByBountyId(latestBounty.id);
-      response.bounty.submissions = claims.length;
-    } catch (contractError) {
-      console.error("Error fetching contract data:", contractError);
-    }
 
     res.json(response);
   } catch (error) {
@@ -625,7 +701,7 @@ app.get("/previous-bounties", async (req, res) => {
 
     // Get last 5 completed bounties from database
     const bounties = await db.all(
-      `SELECT * FROM bounties 
+      `SELECT *, contract_bounty_id as bountyId FROM bounties 
        ORDER BY created_at DESC 
        LIMIT 5 OFFSET 1`
     );
@@ -633,40 +709,83 @@ app.get("/previous-bounties", async (req, res) => {
     const previousBounties = await Promise.all(
       bounties.map(async (bounty) => {
         try {
-          // Get claims for this bounty
-          const claims = await contract.getClaimsByBountyId(bounty.id);
-          console.log("bounty id", bounty.id);
-          console.log("claims", claims);
-          const acceptedClaim = claims.find((claim) => claim.accepted);
+          let acceptedClaim = null;
+          let claimTxHash = null;
 
-          console.log("acceptedClaim: ", acceptedClaim);
+          // If we have a valid contract bounty ID
+          if (bounty.bountyId) {
+            try {
+              const claims = await contract.getClaimsByBountyId(bounty.bountyId);
+              acceptedClaim = claims.find((claim) => claim.accepted);
+
+              if (acceptedClaim) {
+                // Get events for this bounty
+                const events = await contract.queryFilter(
+                  contract.filters.ClaimAccepted(),
+                  -10000 // Look back 10000 blocks
+                );
+                
+                // Find matching event manually
+                const matchingEvent = events.find(event => 
+                  event.args && 
+                  event.args.bountyId.toString() === bounty.bountyId &&
+                  event.args.claimId.toString() === acceptedClaim.id.toString()
+                );
+
+                if (matchingEvent) {
+                  claimTxHash = matchingEvent.transactionHash;
+                }
+              }
+            } catch (error) {
+              console.error(
+                `Error getting claims for bounty ${bounty.bountyId}:`,
+                error
+              );
+            }
+          }
 
           return {
+            id: bounty.bountyId || bounty.id.toString(),
             day: bounty.id,
             title: bounty.title,
             description: bounty.description,
             winner: acceptedClaim ? acceptedClaim.issuer : null,
-            amount: "0.001",
-            tokenAmount: "1000",
+            amount: "0.001 DEGEN",
+            tokenAmount: "1000 $MAD",
             created_at: bounty.created_at,
             task: bounty.title,
+            transactionHash: claimTxHash,
+            // Include raw data for debugging
+            contract_bounty_id: bounty.bountyId,
+            acceptedClaim: acceptedClaim ? {
+              id: acceptedClaim.id.toString(),
+              issuer: acceptedClaim.issuer
+            } : null
           };
         } catch (error) {
           console.error(`Error processing bounty ${bounty.id}:`, error);
+          console.error(error.stack);
           return null;
         }
       })
     );
 
+    // Filter out nulls and format response
+    const validBounties = previousBounties.filter(Boolean);
+
     res.json({
       success: true,
-      bounties: previousBounties.filter(Boolean),
+      stats: {
+        totalBounties: validBounties.length,
+        totalDistributed: (validBounties.length * 0.001).toFixed(3)
+      },
+      bounties: validBounties
     });
   } catch (error) {
     console.error("Error fetching previous bounties:", error);
     res.status(500).json({
       success: false,
-      error: error.message || "Failed to fetch previous bounties",
+      error: error.message || "Failed to fetch previous bounties"
     });
   }
 });
@@ -680,15 +799,15 @@ app.get("/stats", async (req, res) => {
     );
 
     // Calculate total rewards based on days completed
-    // 0.001 ETH per day
+    // 0.001 DEGEN per day
     const rewardPerDay = "0.001";
-    const totalRewardsEth = (Number(rewardPerDay) * dayCount).toFixed(3);
+    const totalRewardsDegen = (Number(rewardPerDay) * dayCount).toFixed(3);
 
     res.json({
       success: true,
       stats: {
         currentDay: dayCount,
-        totalRewards: `${totalRewardsEth} ETH`,
+        totalRewards: `${totalRewardsDegen} DEGEN`,
         tokenDistribution: `${(dayCount * 0.1).toFixed(1)}%`, // 0.1% token distribution per day
       },
     });
