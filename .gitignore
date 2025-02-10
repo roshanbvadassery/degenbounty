@@ -100,7 +100,6 @@ web_modules/
 
 # dotenv environment variable files
 
-bounties.db
 .env
 .env.development.local
 .env.test.local
