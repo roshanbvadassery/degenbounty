@@ -287,22 +287,51 @@ async function generateBountyIdea() {
         },
         body: JSON.stringify({
           model: "openai/gpt-4o-mini",
+          response_format: {
+            type: "json_schema",
+            json_schema: {
+              name: "bounty",
+              strict: true,
+              schema: {
+                type: "object",
+                properties: {
+                  title: {
+                    type: "string",
+                    description: "The title of the bounty"
+                  },
+                  description: {
+                    type: "string",
+                    description: "The description of the bounty"
+                  }
+                },
+                required: ["title", "description"],
+                additionalProperties: false
+              }
+            }
+          },
           messages: [
             {
               role: "system",
-              content: `Generate a concise bounty idea that requires photo proof. These bounties are for a community that values top hats, please creatively include a top hat request in each bounty. Format response as JSON with title and description. Example format: {"title": "Top Hat Tea Time", "description": "Share a photo of your afternoon tea while wearing a top hat"}. AVOID generating anything similar to these recent bounties:\n${recentTitles}`,
+              content: `Generate a concise bounty idea that requires photo proof. These bounties are for a community that values top hats, please creatively include a top hat request in each bounty. AVOID generating anything similar to these recent bounties:\n${recentTitles}`
             },
             {
               role: "user",
-              content: "Generate a unique POIDH bounty",
-            },
-          ],
-        }),
+              content: "Generate a unique POIDH bounty"
+            }
+          ]
+        })
       }
     );
 
     const data = await response.json();
+    
+    // Add validation to ensure we have valid data
     const bounty = JSON.parse(data.choices[0].message.content);
+    
+    if (!bounty || !bounty.title || !bounty.description) {
+      console.log("Invalid AI response:", data);
+      throw new Error("Invalid bounty data received from AI");
+    }
 
     // Store the new bounty in database
     await db.run("INSERT INTO bounties (title, description) VALUES (?, ?)", [
@@ -312,7 +341,9 @@ async function generateBountyIdea() {
 
     return bounty;
   } catch (error) {
-    console.error("Error generating bounty:", error);
+    console.error("Error in AI bounty generation:", error);
+    
+    // Use fallback bounties
     const fallbackBounties = [
       {
         title: "Top Hat Tea Time",
@@ -370,7 +401,15 @@ async function generateBountyIdea() {
     const randomIndex = availableIndices[Math.floor(Math.random() * availableIndices.length)];
     usedFallbackIndices.add(randomIndex);
 
-    return fallbackBounties[randomIndex];
+    const fallbackBounty = fallbackBounties[randomIndex];
+    
+    // Store the fallback bounty in database
+    await db.run("INSERT INTO bounties (title, description) VALUES (?, ?)", [
+      fallbackBounty.title,
+      fallbackBounty.description,
+    ]);
+
+    return fallbackBounty;
   }
 }
 
